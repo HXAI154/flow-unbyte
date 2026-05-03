@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-navy: #1e3a5f;
+  --color-navy-mid: #1e4976;
+  --color-navy-light: #2563a8;
+  --color-teal: #0d9488;
+  --color-teal-light: #14b8a6;
+  --color-teal-bg: #f0fdfa;
+  --color-teal-border: #99f6e4;
+  --color-blue-bg: #f0f9ff;
+  --color-blue-border: #bae6fd;
+  --color-green: #16a34a;
+  --color-green-bg: #f0fdf4;
+  --color-green-border: #bbf7d0;
+  --color-amber: #d97706;
+  --color-amber-bg: #fffbeb;
+  --color-amber-border: #fde68a;
+  --color-red: #e11d48;
+  --color-red-bg: #fff1f2;
+  --color-red-border: #fecdd3;
+  --color-bg: #f0f9ff;
+  --color-card: #ffffff;
+  --color-border: #dbeafe;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  
+  --radius-card: 14px;
+  --radius-btn: 10px;
+  --radius-input: 9px;
+  --radius-badge: 20px;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+  }
+}
+
+@layer utilities {
+  .shadow-default {
+    box-shadow: 0 2px 12px rgba(30,58,95,0.08);
+  }
+  .shadow-hover {
+    box-shadow: 0 4px 20px rgba(30,58,95,0.12);
+  }
+  .shadow-cta {
+    box-shadow: 0 4px 16px rgba(13,148,136,0.35);
+  }
+}
+
+@media print {
+  body {
+    background-color: white !important;
+  }
+  @page {
+    margin: 5mm;
+  }
+}
