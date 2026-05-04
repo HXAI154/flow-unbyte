@@ -2,10 +2,13 @@ import { STORE_KEYS, setItem, saveSettings, getItem } from './storage';
 import { User, Product, Transaction, Customer, Expense, Supplier, ShopSettings } from '../types';
 import { addDays, subDays } from 'date-fns';
 
-export function initializeSampleData() {
+export async function initializeSampleData() {
   // Check if users exist, if so assume initialized
-  const existingUsers = getItem<User>(STORE_KEYS.USERS);
-  if (existingUsers.length > 0) return;
+  const existingUsers = await getItem<User>(STORE_KEYS.USERS);
+  if (existingUsers.length > 0) {
+    console.log('[v0] Sample data already initialized');
+    return;
+  }
 
   const now = new Date();
   const dFormat = (date: Date) => date.toISOString();
@@ -30,7 +33,7 @@ export function initializeSampleData() {
       weeklyEnabled: false,
     }
   };
-  saveSettings(settings);
+  await saveSettings(settings);
 
   // Users
   const users: User[] = [
@@ -38,11 +41,11 @@ export function initializeSampleData() {
     { id: '2', name: 'Priya Sharma', email: 'manager@shop.com', password: 'pass1234', role: 'manager', isActive: true, createdAt: dFormat(now) },
     { id: '3', name: 'Arjun', email: 'staff@shop.com', password: 'pass1234', role: 'staff', isActive: true, createdAt: dFormat(now) },
   ];
-  setItem(STORE_KEYS.USERS, users);
+  await setItem(STORE_KEYS.USERS, users);
 
   // Categories
   const categories = ['Food & Grocery', 'Electronics', 'Stationery', 'Personal Care', 'Beverages'];
-  setItem(STORE_KEYS.CATEGORIES, categories);
+  await setItem(STORE_KEYS.CATEGORIES, categories);
 
   // Products
   const products: Product[] = [
@@ -55,28 +58,30 @@ export function initializeSampleData() {
     { id: 'p7', name: 'Broom', sku: 'BRM-1', category: 'Personal Care', unit: 'pieces', buyingPrice: 60, sellingPrice: 90, stock: 5, reorderLevel: 2, createdAt: dFormat(now), updatedAt: dFormat(now) },
     { id: 'p8', name: 'Tea Powder 500g', sku: 'TEA-500', category: 'Beverages', unit: 'packets', buyingPrice: 110, sellingPrice: 145, stock: 12, reorderLevel: 4, createdAt: dFormat(now), updatedAt: dFormat(now) },
   ];
-  setItem(STORE_KEYS.PRODUCTS, products);
+  await setItem(STORE_KEYS.PRODUCTS, products);
 
   // Customers
   const customers: Customer[] = [
     { id: 'c1', name: 'Suresh', phone: '9876543211', totalPurchases: 3, totalSpent: 1250, outstandingDue: 250, createdAt: dFormat(subDays(now, 10)) },
     { id: 'c2', name: 'Meena', phone: '9876543212', totalPurchases: 1, totalSpent: 400, outstandingDue: 0, createdAt: dFormat(subDays(now, 5)) },
   ];
-  setItem(STORE_KEYS.CUSTOMERS, customers);
+  await setItem(STORE_KEYS.CUSTOMERS, customers);
 
   // Expenses
   const expenses: Expense[] = [
     { id: 'e1', category: 'rent', description: 'Shop rent', amount: 720, date: dFormat(subDays(now, 2)), addedBy: 'Ravi Kumar' },
     { id: 'e2', category: 'utilities', description: 'Electricity', amount: 300, date: dFormat(subDays(now, 1)), addedBy: 'Ravi Kumar' },
   ];
-  setItem(STORE_KEYS.EXPENSES, expenses);
+  await setItem(STORE_KEYS.EXPENSES, expenses);
 
   // Suppliers
   const suppliers: Supplier[] = [
     { id: 's1', name: 'Sharma Wholesale', phone: '1112223334', category: 'Grocery', totalPurchases: 15000, outstandingDue: 4200 },
     { id: 's2', name: 'Gupta Trading Co.', phone: '9998887776', category: 'Electronics', totalPurchases: 8000, outstandingDue: 0 },
   ];
-  setItem(STORE_KEYS.SUPPLIERS, suppliers);
+  await setItem(STORE_KEYS.SUPPLIERS, suppliers);
+  
+  console.log('[v0] Sample data initialization complete');
 
   // Add 5 Transactions
   const transactions: Transaction[] = [];

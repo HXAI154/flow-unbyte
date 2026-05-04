@@ -13,13 +13,18 @@ export function Sidebar() {
 
   const [shopName, setShopName] = useState('Unbyte Flow');
   const [shopLogo, setShopLogo] = useState<string | undefined>();
+  const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    const updateSettingsData = () => {
-       const s = getSettings();
-       if (s) {
-          setShopName(s.shopName || 'Unbyte Flow');
-          setShopLogo(s.logo);
+    const updateSettingsData = async () => {
+       try {
+         const s = await getSettings();
+         if (s) {
+            setShopName(s.shopName || 'Unbyte Flow');
+            setShopLogo(s.logo);
+         }
+       } catch (error) {
+         console.error('[v0] Error loading sidebar settings:', error);
        }
     };
     updateSettingsData();
@@ -27,10 +32,21 @@ export function Sidebar() {
     return () => window.removeEventListener('settings-updated', updateSettingsData);
   }, []);
 
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const productsData = await getItem<Product>(STORE_KEYS.PRODUCTS);
+        setProducts(productsData);
+      } catch (error) {
+        console.error('[v0] Error loading products:', error);
+      }
+    };
+    loadProducts();
+  }, []);
+
   if (!user) return null;
 
   // Calculate low stock badge
-  const products = getItem<Product>(STORE_KEYS.PRODUCTS);
   const lowStockCount = products.filter(p => p.stock <= p.reorderLevel).length;
 
   const handleLogout = () => {

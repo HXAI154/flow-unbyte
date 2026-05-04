@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/src/lib/auth';
 import { formatFriendlyDate } from '@/src/lib/formatters';
 import { Bell } from 'lucide-react';
@@ -7,11 +7,22 @@ import { Product } from '@/src/types';
 
 export function Header() {
   const { user } = useAuth();
+  const [lowStockCount, setLowStockCount] = useState(0);
+  
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const products = await getItem<Product>(STORE_KEYS.PRODUCTS);
+        const count = products.filter(p => p.stock <= p.reorderLevel).length;
+        setLowStockCount(count);
+      } catch (error) {
+        console.error('[v0] Error loading products for header:', error);
+      }
+    };
+    loadProducts();
+  }, []);
   
   if (!user) return null;
-
-  const products = getItem<Product>(STORE_KEYS.PRODUCTS);
-  const lowStockCount = products.filter(p => p.stock <= p.reorderLevel).length;
 
   return (
     <header className="h-[60px] bg-white border-b-[1.5px] border-[var(--color-blue-border)] flex items-center justify-between px-6 shrink-0 shadow-sm z-20 relative">
