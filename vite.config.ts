@@ -20,6 +20,12 @@ export default defineConfig(({mode}) => {
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       middlewareMode: false,
+      allowedHosts: [
+        'localhost',
+        '127.0.0.1',
+        'vm-*.vusercontent.net',
+        '*.vercel.run',
+      ],
     },
     preview: {
       middlewareMode: false,
