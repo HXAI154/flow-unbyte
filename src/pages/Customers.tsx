@@ -17,6 +17,7 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
   
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [printingTx, setPrintingTx] = useState<Transaction | null>(null);
@@ -27,28 +28,49 @@ export default function CustomersPage() {
   });
 
   useEffect(() => {
-    setCustomers(getItem<Customer>(STORE_KEYS.CUSTOMERS));
-    setTransactions(getItem<Transaction>(STORE_KEYS.TRANSACTIONS));
+    const loadData = async () => {
+      try {
+        const [customersData, transactionsData] = await Promise.all([
+          getItem<Customer>(STORE_KEYS.CUSTOMERS),
+          getItem<Transaction>(STORE_KEYS.TRANSACTIONS)
+        ]);
+        setCustomers(customersData);
+        setTransactions(transactionsData);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('[v0] Error loading customers data:', error);
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
-  const handleAddCustomer = (e: React.FormEvent) => {
+  const handleAddCustomer = async (e: React.FormEvent) => {
      e.preventDefault();
      if(!user) return;
-     const c: Customer = {
-        ...newCustomer as Customer,
-        id: 'c' + Date.now(),
-        totalPurchases: 0,
-        totalSpent: 0,
-        outstandingDue: 0,
-        createdAt: new Date().toISOString()
-     };
-     const upd = [...customers, c];
-     setItem(STORE_KEYS.CUSTOMERS, upd);
-     setCustomers(upd);
-     setNewCustomer({ name: '', phone: '', email: '', address: '' });
-     setActiveTab('list');
-     logActivity(user.id, user.name, `Added customer ${c.name}`);
+     try {
+       const c: Customer = {
+          ...newCustomer as Customer,
+          id: 'c' + Date.now(),
+          totalPurchases: 0,
+          totalSpent: 0,
+          outstandingDue: 0,
+          createdAt: new Date().toISOString()
+       };
+       const upd = [...customers, c];
+       await setItem(STORE_KEYS.CUSTOMERS, upd);
+       setCustomers(upd);
+       setNewCustomer({ name: '', phone: '', email: '', address: '' });
+       setActiveTab('list');
+       await logActivity(user.id, user.name, `Added customer ${c.name}`);
+     } catch (error) {
+       console.error('[v0] Error adding customer:', error);
+     }
   };
+
+  if (!user || isLoading) {
+    return <div className="flex items-center justify-center h-screen text-[var(--color-text-muted)]">Loading Customers...</div>;
+  }
 
   const filteredCustomers = customers.filter(c => 
      c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
