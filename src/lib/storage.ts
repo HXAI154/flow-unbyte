@@ -30,7 +30,7 @@ const tableMap: Record<string, string> = {
   [STORE_KEYS.CATEGORIES]: 'categories',
 };
 
-// Generic getter from Supabase
+// Generic getter from Supabase with localStorage fallback
 export async function getItem<T>(key: string): Promise<T[]> {
   try {
     const tableName = tableMap[key];
@@ -39,23 +39,39 @@ export async function getItem<T>(key: string): Promise<T[]> {
       return [];
     }
 
+    // Try to fetch from Supabase
     const { data, error } = await supabase
       .from(tableName)
       .select('*');
 
-    if (error) {
-      console.error(`[v0] Error fetching ${tableName}:`, error);
-      return [];
+    if (!error && data) {
+      console.log(`[v0] Fetched ${tableName} from Supabase:`, data.length);
+      // Save to localStorage as backup
+      localStorage.setItem(`backup_${key}`, JSON.stringify(data));
+      return (data || []) as T[];
     }
 
-    return (data || []) as T[];
+    // Fallback to localStorage if Supabase fails
+    console.log(`[v0] Supabase error for ${tableName}, trying localStorage:`, error?.message);
+    const cached = localStorage.getItem(`backup_${key}`);
+    if (cached) {
+      console.log(`[v0] Using cached data from localStorage for ${key}`);
+      return JSON.parse(cached) as T[];
+    }
+
+    return [];
   } catch (error) {
     console.error(`[v0] Error in getItem:`, error);
+    // Try localStorage as last resort
+    const cached = localStorage.getItem(`backup_${key}`);
+    if (cached) {
+      return JSON.parse(cached) as T[];
+    }
     return [];
   }
 }
 
-// Generic setter/insert to Supabase
+// Generic setter/insert to Supabase with localStorage fallback
 export async function setItem<T extends { id?: string }>(key: string, data: T[]): Promise<void> {
   try {
     const tableName = tableMap[key];
@@ -64,13 +80,25 @@ export async function setItem<T extends { id?: string }>(key: string, data: T[])
       return;
     }
 
-    // Delete existing data and insert new
-    await supabase.from(tableName).delete().neq('id', '');
-    if (data.length > 0) {
-      const { error } = await supabase.from(tableName).insert(data);
-      if (error) {
-        console.error(`[v0] Error inserting into ${tableName}:`, error);
+    // Always save to localStorage as backup
+    localStorage.setItem(`backup_${key}`, JSON.stringify(data));
+    console.log(`[v0] Saved ${data.length} items to localStorage for ${key}`);
+
+    // Try to sync to Supabase
+    try {
+      // Delete existing data and insert new
+      await supabase.from(tableName).delete().neq('id', '');
+      if (data.length > 0) {
+        const { error } = await supabase.from(tableName).insert(data);
+        if (error) {
+          console.error(`[v0] Error inserting into ${tableName}:`, error);
+        } else {
+          console.log(`[v0] Successfully synced ${data.length} items to Supabase table: ${tableName}`);
+        }
       }
+    } catch (supabaseError) {
+      console.error(`[v0] Supabase sync error for ${tableName}:`, supabaseError);
+      // Data is still saved in localStorage, so it's ok
     }
   } catch (error) {
     console.error(`[v0] Error in setItem:`, error);
@@ -154,7 +182,7 @@ export async function deleteItem<T extends { id: string }>(key: string, id: stri
   }
 }
 
-// Special wrapper for settings
+// Special wrapper for settings with localStorage fallback
 export async function getSettings(): Promise<ShopSettings | null> {
   try {
     const { data, error } = await supabase
@@ -162,40 +190,61 @@ export async function getSettings(): Promise<ShopSettings | null> {
       .select('*')
       .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null; // No rows found
-      }
-      console.error(`[v0] Error fetching settings:`, error);
-      return null;
+    if (!error && data) {
+      localStorage.setItem('backup_settings', JSON.stringify(data));
+      return (data || null) as ShopSettings | null;
     }
 
-    return (data || null) as ShopSettings | null;
+    // Fallback to localStorage
+    console.log(`[v0] Supabase error for settings, trying localStorage:`, error?.message);
+    const cached = localStorage.getItem('backup_settings');
+    if (cached) {
+      return JSON.parse(cached) as ShopSettings | null;
+    }
+
+    return null;
   } catch (error) {
     console.error(`[v0] Error in getSettings:`, error);
+    const cached = localStorage.getItem('backup_settings');
+    if (cached) {
+      return JSON.parse(cached) as ShopSettings | null;
+    }
     return null;
   }
 }
 
 export async function saveSettings(settings: ShopSettings): Promise<void> {
   try {
-    const existing = await getSettings();
-    
-    if (existing) {
-      const { error } = await supabase
-        .from('settings')
-        .update(settings)
-        .eq('id', existing.id || '1');
-      if (error) {
-        console.error(`[v0] Error updating settings:`, error);
+    // Always save to localStorage first
+    localStorage.setItem('backup_settings', JSON.stringify(settings));
+    console.log('[v0] Saved settings to localStorage');
+
+    try {
+      const existing = await getSettings();
+      
+      if (existing) {
+        const { error } = await supabase
+          .from('settings')
+          .update(settings)
+          .eq('id', existing.id || '1');
+        if (error) {
+          console.error(`[v0] Error updating settings:`, error);
+        } else {
+          console.log('[v0] Successfully synced settings to Supabase');
+        }
+      } else {
+        const { error } = await supabase
+          .from('settings')
+          .insert([{ id: '1', ...settings }]);
+        if (error) {
+          console.error(`[v0] Error inserting settings:`, error);
+        } else {
+          console.log('[v0] Successfully created settings in Supabase');
+        }
       }
-    } else {
-      const { error } = await supabase
-        .from('settings')
-        .insert([{ id: '1', ...settings }]);
-      if (error) {
-        console.error(`[v0] Error inserting settings:`, error);
-      }
+    } catch (supabaseError) {
+      console.error(`[v0] Supabase error in saveSettings:`, supabaseError);
+      // Settings are still saved in localStorage
     }
     // Emit event for listeners
     window.dispatchEvent(new Event('settings-updated'));
