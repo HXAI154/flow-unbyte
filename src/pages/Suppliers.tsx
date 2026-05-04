@@ -17,6 +17,7 @@ export default function SuppliersPage() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   // New Supplier Form
   const [newSupplier, setNewSupplier] = useState<Partial<Supplier>>({
@@ -30,24 +31,42 @@ export default function SuppliersPage() {
   const [purchasePaid, setPurchasePaid] = useState(true);
 
   useEffect(() => {
-    setSuppliers(getItem<Supplier>(STORE_KEYS.SUPPLIERS));
-    setPurchases(getItem<Purchase>(STORE_KEYS.PURCHASES));
-    setProducts(getItem<Product>(STORE_KEYS.PRODUCTS));
+    const loadData = async () => {
+      try {
+        const [suppliersData, purchasesData, productsData] = await Promise.all([
+          getItem<Supplier>(STORE_KEYS.SUPPLIERS),
+          getItem<Purchase>(STORE_KEYS.PURCHASES),
+          getItem<Product>(STORE_KEYS.PRODUCTS)
+        ]);
+        setSuppliers(suppliersData);
+        setPurchases(purchasesData);
+        setProducts(productsData);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('[v0] Error loading suppliers data:', error);
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
-  const handleAddSupplier = (e: React.FormEvent) => {
+  const handleAddSupplier = async (e: React.FormEvent) => {
      e.preventDefault();
      if(!user) return;
-     const s: Supplier = {
-        ...newSupplier as Supplier,
-        id: 's' + Date.now()
-     };
-     const upd = [...suppliers, s];
-     setItem(STORE_KEYS.SUPPLIERS, upd);
-     setSuppliers(upd);
-     setNewSupplier({ name: '', phone: '', email: '', category: 'General', address: '', totalPurchases: 0, outstandingDue: 0 });
-     setActiveTab('list');
-     logActivity(user.id, user.name, `Added supplier ${s.name}`);
+     try {
+       const s: Supplier = {
+          ...newSupplier as Supplier,
+          id: 's' + Date.now()
+       };
+       const upd = [...suppliers, s];
+       await setItem(STORE_KEYS.SUPPLIERS, upd);
+       setSuppliers(upd);
+       setNewSupplier({ name: '', phone: '', email: '', category: 'General', address: '', totalPurchases: 0, outstandingDue: 0 });
+       setActiveTab('list');
+       await logActivity(user.id, user.name, `Added supplier ${s.name}`);
+     } catch (error) {
+       console.error('[v0] Error adding supplier:', error);
+     }
   };
 
   const handleAddPurchaseItem = (productId: string) => {
@@ -68,73 +87,82 @@ export default function SuppliersPage() {
 
   const calculatePurchaseTotal = () => purchaseItems.reduce((s, i) => s + (i.qty * i.buyPrice), 0);
 
-  const savePurchase = () => {
+  const savePurchase = async () => {
      if(!user || !selectedSupplierId || purchaseItems.length === 0) return;
-     const total = calculatePurchaseTotal();
-     const supplier = suppliers.find(s => s.id === selectedSupplierId);
-     if(!supplier) return;
-
-     const now = new Date().toISOString();
-
-     const p: Purchase = {
-        id: 'po' + Date.now(),
-        supplierId: supplier.id,
-        supplierName: supplier.name,
-        items: purchaseItems,
-        total,
-        paid: purchasePaid,
-        addedBy: user.name,
-        date: now,
-        paidAt: purchasePaid ? now : undefined
-     };
-
-     // update supplier total + due
-     const updSuppliers = suppliers.map(s => {
-        if(s.id === selectedSupplierId) {
-           return {
-              ...s,
-              totalPurchases: s.totalPurchases + total,
-              outstandingDue: s.outstandingDue + (purchasePaid ? 0 : total)
-           };
-        }
-        return s;
-     });
-     setItem(STORE_KEYS.SUPPLIERS, updSuppliers);
-     setSuppliers(updSuppliers);
-
-     // add stock and history
-     const stockHistory = getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY);
-     let updProducts = [...products];
-     for(const item of purchaseItems) {
-        const prodIndex = updProducts.findIndex(pr => pr.id === item.productId);
-        if(prodIndex > -1) {
-           updProducts[prodIndex].stock += item.qty;
-           stockHistory.push({
-              id: 'h' + Date.now() + Math.random(),
-              productId: item.productId,
-              productName: item.name,
-              changeType: 'purchase',
-              qtyChange: item.qty,
-              stockAfter: updProducts[prodIndex].stock,
-              performedBy: user.name,
-              date: now
-           });
-        }
-     }
-     setItem(STORE_KEYS.PRODUCTS, updProducts);
-     setItem(STORE_KEYS.STOCK_HISTORY, stockHistory);
-     setProducts(updProducts);
-
-     const updP = [...purchases, p];
-     setItem(STORE_KEYS.PURCHASES, updP);
-     setPurchases(updP);
      
-     logActivity(user.id, user.name, `Added purchase order from ${supplier.name} for ${formatCurrency(total)}`);
+     try {
+       const total = calculatePurchaseTotal();
+       const supplier = suppliers.find(s => s.id === selectedSupplierId);
+       if(!supplier) return;
 
-     setIsAddingPurchase(false);
-     setPurchaseItems([]);
-     setSelectedSupplierId('');
+       const now = new Date().toISOString();
+
+       const p: Purchase = {
+          id: 'po' + Date.now(),
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          items: purchaseItems,
+          total,
+          paid: purchasePaid,
+          addedBy: user.name,
+          date: now,
+          paidAt: purchasePaid ? now : undefined
+       };
+
+       // update supplier total + due
+       const updSuppliers = suppliers.map(s => {
+          if(s.id === selectedSupplierId) {
+             return {
+                ...s,
+                totalPurchases: s.totalPurchases + total,
+                outstandingDue: s.outstandingDue + (purchasePaid ? 0 : total)
+             };
+          }
+          return s;
+       });
+       await setItem(STORE_KEYS.SUPPLIERS, updSuppliers);
+       setSuppliers(updSuppliers);
+
+       // add stock and history
+       const stockHistory = await getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY);
+       let updProducts = [...products];
+       for(const item of purchaseItems) {
+          const prodIndex = updProducts.findIndex(pr => pr.id === item.productId);
+          if(prodIndex > -1) {
+             updProducts[prodIndex].stock += item.qty;
+             stockHistory.push({
+                id: 'h' + Date.now() + Math.random(),
+                productId: item.productId,
+                productName: item.name,
+                changeType: 'purchase',
+                qtyChange: item.qty,
+                stockAfter: updProducts[prodIndex].stock,
+                performedBy: user.name,
+                date: now
+             });
+          }
+       }
+       await setItem(STORE_KEYS.PRODUCTS, updProducts);
+       await setItem(STORE_KEYS.STOCK_HISTORY, stockHistory);
+       setProducts(updProducts);
+
+       const updP = [...purchases, p];
+       await setItem(STORE_KEYS.PURCHASES, updP);
+       setPurchases(updP);
+       
+       await logActivity(user.id, user.name, `Added purchase order from ${supplier.name} for ${formatCurrency(total)}`);
+
+       setIsAddingPurchase(false);
+       setPurchaseItems([]);
+       setSelectedSupplierId('');
+     } catch (error) {
+       console.error('[v0] Error saving purchase:', error);
+     }
   };
+
+  if (!user || isLoading) {
+    return <div className="flex items-center justify-center h-screen text-[var(--color-text-muted)]">Loading Suppliers...</div>;
+  }
 
   const filteredSuppliers = suppliers.filter(s => 
      s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 

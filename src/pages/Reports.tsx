@@ -19,11 +19,26 @@ export default function ReportsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setProducts(getItem<Product>(STORE_KEYS.PRODUCTS));
-    setTransactions(getItem<Transaction>(STORE_KEYS.TRANSACTIONS).filter(t => t.status === 'completed'));
-    setExpenses(getItem<Expense>(STORE_KEYS.EXPENSES));
+    const loadData = async () => {
+      try {
+        const [productsData, transactionsData, expensesData] = await Promise.all([
+          getItem<Product>(STORE_KEYS.PRODUCTS),
+          getItem<Transaction>(STORE_KEYS.TRANSACTIONS),
+          getItem<Expense>(STORE_KEYS.EXPENSES)
+        ]);
+        setProducts(productsData);
+        setTransactions(transactionsData.filter(t => t.status === 'completed'));
+        setExpenses(expensesData);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('[v0] Error loading reports data:', error);
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
   const totalSalesAmount = transactions.reduce((s,t) => s + t.total, 0);
@@ -106,6 +121,10 @@ export default function ReportsPage() {
      a.download = 'Unbyte_Flow_Backup.json';
      a.click();
   };
+
+  if (!user || isLoading) {
+    return <div className="flex items-center justify-center h-screen text-[var(--color-text-muted)]">Loading Reports...</div>;
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">

@@ -28,10 +28,21 @@ export default function InventoryPage() {
   const [deletePrompt, setDeletePrompt] = useState<Product | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = () => {
-    setProducts(getItem<Product>(STORE_KEYS.PRODUCTS));
-    setHistory(getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY));
+  const loadData = async () => {
+    try {
+      const [productsData, historyData] = await Promise.all([
+        getItem<Product>(STORE_KEYS.PRODUCTS),
+        getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY)
+      ]);
+      setProducts(productsData);
+      setHistory(historyData);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('[v0] Error loading inventory data:', error);
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -48,86 +59,90 @@ export default function InventoryPage() {
     }
   };
 
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
-    // Auto generate SKU if empty
-    let finalSku = newProduct.sku;
-    if (!finalSku) {
-      finalSku = newProduct.name!.substring(0,3).toUpperCase() + '-' + Math.floor(Math.random()*1000);
-    }
-    
-    if (editingId) {
-      // Edit
-      const originalInfo = products.find(p => p.id === editingId);
-      if(!originalInfo) return;
-
-      const product: Product = {
-        ...(originalInfo as Product),
-        ...newProduct,
-        sku: finalSku,
-        updatedAt: new Date().toISOString()
-      };
-
-      const updated = products.map(p => p.id === editingId ? product : p);
-      setItem(STORE_KEYS.PRODUCTS, updated);
-      setProducts(updated);
-      
-      // Stock adjustment tracking
-      const stockDiff = product.stock - originalInfo.stock;
-      if (stockDiff !== 0) {
-         const hLog: StockHistoryEntry = {
-            id: 'h' + Date.now(),
-            productId: product.id,
-            productName: product.name,
-            changeType: stockDiff > 0 ? 'manual_add' : 'manual_remove',
-            qtyChange: stockDiff,
-            stockAfter: product.stock,
-            performedBy: user.name,
-            date: new Date().toISOString()
-         };
-         const hLogs = [...history, hLog];
-         setItem(STORE_KEYS.STOCK_HISTORY, hLogs);
-         setHistory(hLogs);
+    try {
+      // Auto generate SKU if empty
+      let finalSku = newProduct.sku;
+      if (!finalSku) {
+        finalSku = newProduct.name!.substring(0,3).toUpperCase() + '-' + Math.floor(Math.random()*1000);
       }
       
-      logActivity(user.id, user.name, `Updated product: ${product.name}`);
-    } else {
-      // Add new
-      const product: Product = {
-        ...newProduct as Product,
-        id: 'p' + Date.now(),
-        sku: finalSku,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      if (editingId) {
+        // Edit
+        const originalInfo = products.find(p => p.id === editingId);
+        if(!originalInfo) return;
+
+        const product: Product = {
+          ...(originalInfo as Product),
+          ...newProduct,
+          sku: finalSku,
+          updatedAt: new Date().toISOString()
+        };
+
+        const updated = products.map(p => p.id === editingId ? product : p);
+        await setItem(STORE_KEYS.PRODUCTS, updated);
+        setProducts(updated);
+        
+        // Stock adjustment tracking
+        const stockDiff = product.stock - originalInfo.stock;
+        if (stockDiff !== 0) {
+           const hLog: StockHistoryEntry = {
+              id: 'h' + Date.now(),
+              productId: product.id,
+              productName: product.name,
+              changeType: stockDiff > 0 ? 'manual_add' : 'manual_remove',
+              qtyChange: stockDiff,
+              stockAfter: product.stock,
+              performedBy: user.name,
+              date: new Date().toISOString()
+           };
+           const hLogs = [...history, hLog];
+           await setItem(STORE_KEYS.STOCK_HISTORY, hLogs);
+           setHistory(hLogs);
+        }
+        
+        await logActivity(user.id, user.name, `Updated product: ${product.name}`);
+      } else {
+        // Add new
+        const product: Product = {
+          ...newProduct as Product,
+          id: 'p' + Date.now(),
+          sku: finalSku,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        const updated = [...products, product];
+        await setItem(STORE_KEYS.PRODUCTS, updated);
+        setProducts(updated);
+        
+        // Log history
+        const hLog: StockHistoryEntry = {
+          id: 'h' + Date.now(),
+          productId: product.id,
+          productName: product.name,
+          changeType: 'manual_add',
+          qtyChange: product.stock,
+          stockAfter: product.stock,
+          performedBy: user.name,
+          date: new Date().toISOString()
+        };
+        const hLogs = [...history, hLog];
+        await setItem(STORE_KEYS.STOCK_HISTORY, hLogs);
+        setHistory(hLogs);
+        
+        await logActivity(user.id, user.name, `Added new product: ${product.name}`);
+      }
       
-      const updated = [...products, product];
-      setItem(STORE_KEYS.PRODUCTS, updated);
-      setProducts(updated);
-      
-      // Log history
-      const hLog: StockHistoryEntry = {
-        id: 'h' + Date.now(),
-        productId: product.id,
-        productName: product.name,
-        changeType: 'manual_add',
-        qtyChange: product.stock,
-        stockAfter: product.stock,
-        performedBy: user.name,
-        date: new Date().toISOString()
-      };
-      const hLogs = [...history, hLog];
-      setItem(STORE_KEYS.STOCK_HISTORY, hLogs);
-      setHistory(hLogs);
-      
-      logActivity(user.id, user.name, `Added new product: ${product.name}`);
+      setNewProduct({ ...defaultProductState, category: newProduct.category });
+      setEditingId(null);
+      setActiveTab('all');
+    } catch (error) {
+      console.error('[v0] Error saving product:', error);
     }
-    
-    setNewProduct({ ...defaultProductState, category: newProduct.category });
-    setEditingId(null);
-    setActiveTab('all');
   };
 
   const startEdit = (product: Product) => {
@@ -146,20 +161,28 @@ export default function InventoryPage() {
     setDeletePrompt(product);
   };
 
-  const confirmDeleteProduct = () => {
+  const confirmDeleteProduct = async () => {
     if (!user || !deletePrompt) return;
 
-    const updated = products.filter(p => p.id !== deletePrompt.id);
-    setItem(STORE_KEYS.PRODUCTS, updated);
-    setProducts(updated);
-    logActivity(user.id, user.name, `Deleted product: ${deletePrompt.name}`);
-    setDeletePrompt(null);
+    try {
+      const updated = products.filter(p => p.id !== deletePrompt.id);
+      await setItem(STORE_KEYS.PRODUCTS, updated);
+      setProducts(updated);
+      await logActivity(user.id, user.name, `Deleted product: ${deletePrompt.name}`);
+      setDeletePrompt(null);
+    } catch (error) {
+      console.error('[v0] Error deleting product:', error);
+    }
   };
 
   const filteredProducts = products.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (!user || isLoading) {
+    return <div className="flex items-center justify-center h-screen text-[var(--color-text-muted)]">Loading Inventory...</div>;
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">

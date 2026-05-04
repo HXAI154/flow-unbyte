@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/src/lib/auth';
-import { STORE_KEYS, getItem } from '@/src/lib/storage';
+import { STORE_KEYS, getItem, subscribeToTable } from '@/src/lib/storage';
 import { Product, Transaction, Customer } from '@/src/types';
 import { Card, CardContent } from '@/src/components/ui/card';
 import { AlertCircle, TrendingUp, ShoppingBag, PackageX, IndianRupee, CheckCircle2, ArrowRight } from 'lucide-react';
@@ -12,11 +12,46 @@ import { PermissionGate } from '@/src/components/auth/PermissionGate';
 
 export default function Dashboard() {
   const { user } = useAuth();
-  if (!user) return null;
+  const [products, setProducts] = useState<Product[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const products = getItem<Product>(STORE_KEYS.PRODUCTS);
-  const transactions = getItem<Transaction>(STORE_KEYS.TRANSACTIONS);
-  const customers = getItem<Customer>(STORE_KEYS.CUSTOMERS);
+  useEffect(() => {
+    // Load initial data
+    const loadData = async () => {
+      try {
+        const [productsData, transactionsData, customersData] = await Promise.all([
+          getItem<Product>(STORE_KEYS.PRODUCTS),
+          getItem<Transaction>(STORE_KEYS.TRANSACTIONS),
+          getItem<Customer>(STORE_KEYS.CUSTOMERS)
+        ]);
+        
+        setProducts(productsData);
+        setTransactions(transactionsData);
+        setCustomers(customersData);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('[v0] Error loading dashboard data:', error);
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+
+    // Subscribe to real-time updates
+    const productSub = subscribeToTable<Product>('products', setProducts);
+    const transactionSub = subscribeToTable<Transaction>('transactions', setTransactions);
+    const customerSub = subscribeToTable<Customer>('customers', setCustomers);
+
+    return () => {
+      productSub.unsubscribe();
+      transactionSub.unsubscribe();
+      customerSub.unsubscribe();
+    };
+  }, []);
+
+  if (!user || isLoading) return <div className="flex items-center justify-center h-screen text-[var(--color-text-muted)]">Loading...</div>;
 
   // Stats
   const todayTransactions = transactions.filter(t => isToday(new Date(t.createdAt)) && t.status === 'completed');

@@ -18,11 +18,26 @@ export default function FinancePage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setTransactions(getItem<Transaction>(STORE_KEYS.TRANSACTIONS));
-    setExpenses(getItem<Expense>(STORE_KEYS.EXPENSES));
-    setCustomers(getItem<Customer>(STORE_KEYS.CUSTOMERS));
+    const loadData = async () => {
+      try {
+        const [transactionsData, expensesData, customersData] = await Promise.all([
+          getItem<Transaction>(STORE_KEYS.TRANSACTIONS),
+          getItem<Expense>(STORE_KEYS.EXPENSES),
+          getItem<Customer>(STORE_KEYS.CUSTOMERS)
+        ]);
+        setTransactions(transactionsData);
+        setExpenses(expensesData);
+        setCustomers(customersData);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('[v0] Error loading finance data:', error);
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
   const totalSales = transactions.filter(t => t.status === 'completed').reduce((sum, t) => sum + t.total, 0);
@@ -30,21 +45,26 @@ export default function FinancePage() {
   const netProfit = totalSales - totalExpenses;
   const totalDues = customers.reduce((sum, c) => sum + c.outstandingDue, 0);
 
-  const voidTransaction = (txId: string) => {
+  const voidTransaction = async (txId: string) => {
     const reason = prompt("Why are you voiding this sale?");
     if (!reason) return;
 
     if (!user) return;
     
-    // Simplistic void logic: Updates tx status to voided.
-    // In a full app, also restore stock (omitted for brevity, assume simple).
-    
-    const updated = transactions.map(t => t.id === txId ? { ...t, status: 'voided' as const, voidReason: reason } : t);
-    setItem(STORE_KEYS.TRANSACTIONS, updated);
-    setTransactions(updated);
-    
-    logActivity(user.id, user.name, `Voided transaction ${updated.find(t=>t.id===txId)?.invoiceNumber}`);
+    try {
+      const updated = transactions.map(t => t.id === txId ? { ...t, status: 'voided' as const, voidReason: reason } : t);
+      await setItem(STORE_KEYS.TRANSACTIONS, updated);
+      setTransactions(updated);
+      
+      await logActivity(user.id, user.name, `Voided transaction ${updated.find(t=>t.id===txId)?.invoiceNumber}`);
+    } catch (error) {
+      console.error('[v0] Error voiding transaction:', error);
+    }
   };
+
+  if (!user || isLoading) {
+    return <div className="flex items-center justify-center h-screen text-[var(--color-text-muted)]">Loading Finance...</div>;
+  }
 
   const COLORS = ['#e11d48', '#0d9488', '#d97706', '#1e3a5f'];
   
