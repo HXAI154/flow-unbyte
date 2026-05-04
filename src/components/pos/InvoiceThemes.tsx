@@ -1,14 +1,13 @@
 import React from 'react';
-import { Transaction } from '@/src/types';
+import { Transaction, ShopSettings } from '@/src/types';
 import { formatCurrency, formatFriendlyDate, formatStandardDate } from '@/src/lib/formatters';
-import { getSettings } from '@/src/lib/storage';
 
 interface ThemeProps {
   tx: Transaction;
+  settings?: ShopSettings | null;
 }
 
-export function ThemeTally({ tx }: ThemeProps) {
-  const settings = getSettings();
+export function ThemeTally({ tx, settings }: ThemeProps) {
   
   return (
     <div className="bg-white border text-sm text-[var(--color-navy)] w-full max-w-[800px] mx-auto print:border-none print:w-full font-sans">
@@ -111,8 +110,7 @@ export function ThemeTally({ tx }: ThemeProps) {
   );
 }
 
-export function ThemeLandscape({ tx }: ThemeProps) {
-  const settings = getSettings();
+export function ThemeLandscape({ tx, settings }: ThemeProps) {
   
   return (
     <div className="bg-white border border-gray-300 text-sm text-[var(--color-navy)] w-full max-w-[800px] mx-auto print:border-none print:w-full font-serif flex flex-col">
@@ -184,8 +182,7 @@ export function ThemeLandscape({ tx }: ThemeProps) {
   );
 }
 
-export function ThemeGST({ tx }: ThemeProps) {
-  const settings = getSettings();
+export function ThemeGST({ tx, settings }: ThemeProps) {
   
   return (
     <div className="bg-white border border-gray-200 text-sm text-[var(--color-navy)] w-full max-w-[800px] mx-auto print:border-none print:w-full font-sans shadow-sm rounded-lg overflow-hidden">

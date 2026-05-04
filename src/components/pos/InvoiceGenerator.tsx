@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Transaction } from '@/src/types';
+import React, { useState, useEffect } from 'react';
+import { Transaction, ShopSettings } from '@/src/types';
 import { ThemeTally, ThemeLandscape, ThemeGST } from './InvoiceThemes';
 import { Button } from '@/src/components/ui/button';
 import { Printer, Check, ChevronLeft } from 'lucide-react';
+import { getSettings } from '@/src/lib/storage';
 
 interface InvoiceGeneratorProps {
   tx: Transaction;
@@ -11,6 +12,19 @@ interface InvoiceGeneratorProps {
 
 export function InvoiceGenerator({ tx, onDone }: InvoiceGeneratorProps) {
   const [selectedTheme, setSelectedTheme] = useState<'tally' | 'landscape' | 'gst'>('gst');
+  const [settings, setSettings] = useState<ShopSettings | null>(null);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const s = await getSettings();
+        setSettings(s);
+      } catch (error) {
+        console.error('[v0] Error loading settings for invoice:', error);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const handlePrint = () => {
     window.print();
@@ -77,9 +91,9 @@ export function InvoiceGenerator({ tx, onDone }: InvoiceGeneratorProps) {
                   {selectedTheme === 'landscape' && <span className="bg-blue-800 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest">Landscape</span>}
                   {selectedTheme === 'gst' && <span className="bg-purple-800 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest">GST Theme</span>}
                </div>
-               {selectedTheme === 'tally' && <ThemeTally tx={tx} />}
-               {selectedTheme === 'landscape' && <ThemeLandscape tx={tx} />}
-               {selectedTheme === 'gst' && <ThemeGST tx={tx} />}
+               {selectedTheme === 'tally' && <ThemeTally tx={tx} settings={settings} />}
+               {selectedTheme === 'landscape' && <ThemeLandscape tx={tx} settings={settings} />}
+               {selectedTheme === 'gst' && <ThemeGST tx={tx} settings={settings} />}
             </div>
          </div>
       </div>

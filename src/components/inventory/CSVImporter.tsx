@@ -49,19 +49,20 @@ export function CSVImporter({ onImportComplete }: { onImportComplete: () => void
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: function(results) {
+      complete: async function(results) {
         let imported = 0;
         let updated = 0;
         let skipped = 0;
         const errors: string[] = [];
         
-        const currentProducts = getItem<Product>(STORE_KEYS.PRODUCTS);
-        const categories = getItem<string>(STORE_KEYS.CATEGORIES);
-        const newProducts = [...currentProducts];
-        const newCategories = new Set(categories);
-        
-        const stockHistory = getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY);
-        const newHistory = [...stockHistory];
+        try {
+          const currentProducts = await getItem<Product>(STORE_KEYS.PRODUCTS);
+          const categories = await getItem<string>(STORE_KEYS.CATEGORIES);
+          const newProducts = [...currentProducts];
+          const newCategories = new Set(categories);
+          
+          const stockHistory = await getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY);
+          const newHistory = [...stockHistory];
 
         results.data.forEach((row: any, index: number) => {
           const rowNum = index + 1;
@@ -129,17 +130,22 @@ export function CSVImporter({ onImportComplete }: { onImportComplete: () => void
               date: new Date().toISOString()
             });
           }
-        });
-        
-        setItem(STORE_KEYS.PRODUCTS, newProducts);
-        setItem(STORE_KEYS.CATEGORIES, Array.from(newCategories));
-        setItem(STORE_KEYS.STOCK_HISTORY, newHistory);
-        
-        logActivity(user.id, user.name, `Imported CSV: ${imported} added, ${updated} updated`);
-        
-        setResult({ imported, updated, skipped, errors });
-        setImporting(false);
-        onImportComplete();
+          });
+          
+          await setItem(STORE_KEYS.PRODUCTS, newProducts);
+          await setItem(STORE_KEYS.CATEGORIES, Array.from(newCategories));
+          await setItem(STORE_KEYS.STOCK_HISTORY, newHistory);
+          
+          await logActivity(user.id, user.name, `Imported CSV: ${imported} added, ${updated} updated`);
+          
+          setResult({ imported, updated, skipped, errors });
+          setImporting(false);
+          onImportComplete();
+        } catch (error) {
+          console.error('[v0] Error during CSV import:', error);
+          setResult({ imported: 0, updated: 0, skipped: results.data.length, errors: ['Error processing CSV. Please check the format.'] });
+          setImporting(false);
+        }
       }
     });
   };
