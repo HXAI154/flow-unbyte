@@ -28,10 +28,21 @@ export default function InventoryPage() {
   const [deletePrompt, setDeletePrompt] = useState<Product | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = () => {
-    setProducts(getItem<Product>(STORE_KEYS.PRODUCTS));
-    setHistory(getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY));
+  const loadData = async () => {
+    try {
+      const [productsData, historyData] = await Promise.all([
+        getItem<Product>(STORE_KEYS.PRODUCTS),
+        getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY)
+      ]);
+      setProducts(productsData);
+      setHistory(historyData);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('[v0] Error loading inventory data:', error);
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {

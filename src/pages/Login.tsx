@@ -13,29 +13,48 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const [settings, setSettings] = useState<ShopSettings | null>(null);
-  useEffect(() => setSettings(getSettings()), []);
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settingsData = await getSettings();
+        setSettings(settingsData);
+      } catch (error) {
+        console.error('[v0] Error loading settings:', error);
+      }
+    };
+    loadSettings();
+  }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    const users = getItem<User>(STORE_KEYS.USERS);
-    const user = users.find(u => u.email === email && u.password === password && u.isActive);
+    try {
+      const users = await getItem<User>(STORE_KEYS.USERS);
+      const user = users.find(u => u.email === email && u.password === password && u.isActive);
 
-    if (user) {
-      login(user);
-      if (user.role === 'staff') {
-        navigate('/pos');
+      if (user) {
+        login(user);
+        if (user.role === 'staff') {
+          navigate('/pos');
+        } else {
+          navigate('/dashboard');
+        }
       } else {
-        navigate('/dashboard');
+        setError('Invalid email or password.');
       }
-    } else {
-      setError('Invalid email or password.');
+    } catch (error) {
+      console.error('[v0] Login error:', error);
+      setError('An error occurred during login. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -111,8 +130,8 @@ export default function LoginPage() {
                 </button>
               </div>
               
-              <Button type="submit" variant="default" className="w-full h-[48px] text-base mt-2">
-                Login
+              <Button type="submit" variant="default" className="w-full h-[48px] text-base mt-2" disabled={isLoading}>
+                {isLoading ? 'Logging in...' : 'Login'}
               </Button>
             </form>
           </CardContent>

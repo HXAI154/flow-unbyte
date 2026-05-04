@@ -14,6 +14,8 @@ export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [settings, setSettings] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -29,17 +31,35 @@ export default function POSPage() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [completedTx, setCompletedTx] = useState<Transaction | null>(null);
 
-  const settings = getSettings();
   const taxPct = settings?.taxEnabled ? settings.taxPct : 0;
   const taxLabel = settings?.taxLabel || 'Tax';
 
   useEffect(() => {
-    setProducts(getItem<Product>(STORE_KEYS.PRODUCTS));
-    setCategories(['All', ...getItem<string>(STORE_KEYS.CATEGORIES)]);
-    setCustomers(getItem<Customer>(STORE_KEYS.CUSTOMERS));
-    
-    const draft = localStorage.getItem('shopease_cart_draft');
-    if (draft) setCart(JSON.parse(draft));
+    const loadData = async () => {
+      try {
+        const [productsData, categoriesData, customersData, settingsData] = await Promise.all([
+          getItem<Product>(STORE_KEYS.PRODUCTS),
+          getItem<string>(STORE_KEYS.CATEGORIES),
+          getItem<Customer>(STORE_KEYS.CUSTOMERS),
+          getSettings()
+        ]);
+        
+        setProducts(productsData);
+        setCategories(['All', ...categoriesData]);
+        setCustomers(customersData);
+        setSettings(settingsData);
+        
+        const draft = localStorage.getItem('shopease_cart_draft');
+        if (draft) setCart(JSON.parse(draft));
+        
+        setIsLoading(false);
+      } catch (error) {
+        console.error('[v0] Error loading POS data:', error);
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
   }, []);
 
   useEffect(() => {
@@ -95,94 +115,99 @@ export default function POSPage() {
   const total = subtotal + taxAmount;
   const change = paymentMethod === 'cash' && amountReceived ? Math.max(0, parseFloat(amountReceived) - total) : 0;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (cart.length === 0 || !user) return;
     
-    const now = new Date().toISOString();
-    let customerId = '';
-    
-    // Handle Customer
-    if (customerPhone) {
-      const existing = customers.find(c => c.phone === customerPhone);
-      if (existing) {
-        customerId = existing.id;
-        // Update customer total
-        const updated = customers.map(c => c.id === existing.id ? { 
-          ...c, 
-          totalPurchases: c.totalPurchases + 1, 
-          totalSpent: c.totalSpent + total,
-          outstandingDue: c.outstandingDue + (paymentMethod === 'credit' ? total : 0)
-        } : c);
-        setItem(STORE_KEYS.CUSTOMERS, updated);
-      } else {
-        const newCustomer: Customer = {
-          id: 'c' + Date.now(),
-          name: customerName || 'Unknown',
-          phone: customerPhone,
-          totalPurchases: 1,
-          totalSpent: total,
-          outstandingDue: paymentMethod === 'credit' ? total : 0,
-          createdAt: now
-        };
-        setItem(STORE_KEYS.CUSTOMERS, [...customers, newCustomer]);
-        customerId = newCustomer.id;
+    try {
+      const now = new Date().toISOString();
+      let customerId = '';
+      
+      // Handle Customer
+      if (customerPhone) {
+        const existing = customers.find(c => c.phone === customerPhone);
+        if (existing) {
+          customerId = existing.id;
+          // Update customer total
+          const updated = customers.map(c => c.id === existing.id ? { 
+            ...c, 
+            totalPurchases: c.totalPurchases + 1, 
+            totalSpent: c.totalSpent + total,
+            outstandingDue: c.outstandingDue + (paymentMethod === 'credit' ? total : 0)
+          } : c);
+          await setItem(STORE_KEYS.CUSTOMERS, updated);
+        } else {
+          const newCustomer: Customer = {
+            id: 'c' + Date.now(),
+            name: customerName || 'Unknown',
+            phone: customerPhone,
+            totalPurchases: 1,
+            totalSpent: total,
+            outstandingDue: paymentMethod === 'credit' ? total : 0,
+            createdAt: now
+          };
+          await setItem(STORE_KEYS.CUSTOMERS, [...customers, newCustomer]);
+          customerId = newCustomer.id;
+        }
       }
-    }
 
-    // Deduct stock and log history
-    let updatedProducts = [...products];
-    const historyLogs = getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY);
-    
-    for (const item of cart) {
-      const pIdx = updatedProducts.findIndex(p => p.id === item.productId);
-      if (pIdx > -1) {
-        updatedProducts[pIdx].stock -= item.qty;
-        historyLogs.push({
-          id: 'h' + Date.now() + Math.random(),
-          productId: item.productId,
-          productName: item.name,
-          changeType: 'sale',
-          qtyChange: -item.qty,
-          stockAfter: updatedProducts[pIdx].stock,
-          performedBy: user.name,
-          date: now
-        });
+      // Deduct stock and log history
+      let updatedProducts = [...products];
+      const historyLogs = await getItem<StockHistoryEntry>(STORE_KEYS.STOCK_HISTORY);
+      
+      for (const item of cart) {
+        const pIdx = updatedProducts.findIndex(p => p.id === item.productId);
+        if (pIdx > -1) {
+          updatedProducts[pIdx].stock -= item.qty;
+          historyLogs.push({
+            id: 'h' + Date.now() + Math.random(),
+            productId: item.productId,
+            productName: item.name,
+            changeType: 'sale',
+            qtyChange: -item.qty,
+            stockAfter: updatedProducts[pIdx].stock,
+            performedBy: user.name,
+            date: now
+          });
+        }
       }
+      await setItem(STORE_KEYS.PRODUCTS, updatedProducts);
+      await setItem(STORE_KEYS.STOCK_HISTORY, historyLogs);
+
+      // Create tx
+      const transactions = await getItem<Transaction>(STORE_KEYS.TRANSACTIONS);
+      const invNum = `INV-${(transactions.length + 1).toString().padStart(4, '0')}`;
+      const newTx: Transaction = {
+        id: 'tx' + Date.now(),
+        invoiceNumber: invNum,
+        items: cart,
+        subtotal, taxPct, taxAmount, discountAmount: 0, total,
+        amountPaid: paymentMethod === 'credit' ? 0 : (paymentMethod === 'cash' ? (amountReceived ? parseFloat(amountReceived) : total) : total),
+        change, paymentMethod,
+        customerId, customerName, customerPhone,
+        staffId: user.id, staffName: user.name,
+        status: 'completed',
+        createdAt: now
+      };
+      await setItem(STORE_KEYS.TRANSACTIONS, [...transactions, newTx]);
+      await logActivity(user.id, user.name, `Completed sale ${invNum} for ${formatCurrency(total)}`);
+
+      setCompletedTx(newTx);
+      setIsCartOpen(false);
+      setView('success');
+
+      setTimeout(async () => {
+        setView('invoice');
+        setCart([]);
+        setCustomerName('');
+        setCustomerPhone('');
+        setAmountReceived('');
+        setPaymentMethod('cash');
+        const refreshedProducts = await getItem<Product>(STORE_KEYS.PRODUCTS);
+        setProducts(refreshedProducts);
+      }, 2000);
+    } catch (error) {
+      console.error('[v0] Error processing transaction:', error);
     }
-    setItem(STORE_KEYS.PRODUCTS, updatedProducts);
-    setItem(STORE_KEYS.STOCK_HISTORY, historyLogs);
-
-    // Create tx
-    const transactions = getItem<Transaction>(STORE_KEYS.TRANSACTIONS);
-    const invNum = `INV-${(transactions.length + 1).toString().padStart(4, '0')}`;
-    const newTx: Transaction = {
-      id: 'tx' + Date.now(),
-      invoiceNumber: invNum,
-      items: cart,
-      subtotal, taxPct, taxAmount, discountAmount: 0, total,
-      amountPaid: paymentMethod === 'credit' ? 0 : (paymentMethod === 'cash' ? (amountReceived ? parseFloat(amountReceived) : total) : total),
-      change, paymentMethod,
-      customerId, customerName, customerPhone,
-      staffId: user.id, staffName: user.name,
-      status: 'completed',
-      createdAt: now
-    };
-    setItem(STORE_KEYS.TRANSACTIONS, [...transactions, newTx]);
-    logActivity(user.id, user.name, `Completed sale ${invNum} for ${formatCurrency(total)}`);
-
-    setCompletedTx(newTx);
-    setIsCartOpen(false);
-    setView('success');
-
-    setTimeout(() => {
-      setView('invoice');
-      setCart([]);
-      setCustomerName('');
-      setCustomerPhone('');
-      setAmountReceived('');
-      setPaymentMethod('cash');
-      setProducts(getItem<Product>(STORE_KEYS.PRODUCTS)); // refresh
-    }, 2000);
   };
 
   const closeInvoiceAndRestart = () => {
@@ -192,6 +217,10 @@ export default function POSPage() {
 
   if (view === 'invoice' && completedTx) {
      return <InvoiceGenerator tx={completedTx} onDone={closeInvoiceAndRestart} />;
+  }
+
+  if (!user || isLoading) {
+    return <div className="flex items-center justify-center h-screen text-[var(--color-text-muted)]">Loading POS...</div>;
   }
 
   if (view === 'success') {
