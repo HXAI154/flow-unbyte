@@ -16,67 +16,91 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<ShopSettings | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   useEffect(() => {
-    setSettings(getSettings());
-    setUsers(getItem<User>(STORE_KEYS.USERS));
-    setLogs(getItem<ActivityLog>(STORE_KEYS.ACTIVITY_LOG));
+    const loadData = async () => {
+      try {
+        const [settingsData, usersData, logsData] = await Promise.all([
+          getSettings(),
+          getItem<User>(STORE_KEYS.USERS),
+          getItem<ActivityLog>(STORE_KEYS.ACTIVITY_LOG)
+        ]);
+        setSettings(settingsData);
+        setUsers(usersData);
+        setLogs(logsData);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('[v0] Error loading settings data:', error);
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
-  const handleSaveShop = (e: React.FormEvent) => {
+  const handleSaveShop = async (e: React.FormEvent) => {
     e.preventDefault();
     if(settings) {
-      saveSettings(settings);
-      alert('Settings saved!');
+      try {
+        await saveSettings(settings);
+        alert('Settings saved!');
+      } catch (error) {
+        console.error('[v0] Error saving settings:', error);
+        alert('Error saving settings');
+      }
     }
   };
 
-  const handleSaveUser = (userData: Partial<User>) => {
-    let newUsers = [...users];
-    if (editingUser) {
-      newUsers = newUsers.map(u => {
-         if (u.id === editingUser.id) {
-            return {
-               ...u,
-               name: userData.name!,
-               email: userData.email!,
-               role: userData.role!,
-               isActive: userData.isActive ?? true,
-               password: userData.password || u.password,
-               permissions: userData.permissions || []
-            };
-         }
-         return u;
-      });
-    } else {
-      newUsers.push({
-         id: Math.random().toString(36).substring(2, 9),
-         name: userData.name!,
-         email: userData.email!,
-         role: userData.role!,
-         isActive: userData.isActive ?? true,
-         password: userData.password!,
-         permissions: userData.permissions || [],
-         createdAt: new Date().toISOString()
-      });
+  const handleSaveUser = async (userData: Partial<User>) => {
+    try {
+      let newUsers = [...users];
+      if (editingUser) {
+        newUsers = newUsers.map(u => {
+           if (u.id === editingUser.id) {
+              return {
+                 ...u,
+                 name: userData.name!,
+                 email: userData.email!,
+                 role: userData.role!,
+                 isActive: userData.isActive ?? true,
+                 password: userData.password || u.password,
+                 permissions: userData.permissions || []
+              };
+           }
+           return u;
+        });
+      } else {
+        newUsers.push({
+           id: Math.random().toString(36).substring(2, 9),
+           name: userData.name!,
+           email: userData.email!,
+           role: userData.role!,
+           isActive: userData.isActive ?? true,
+           password: userData.password!,
+           permissions: userData.permissions || [],
+           createdAt: new Date().toISOString()
+        });
+      }
+      
+      // Auto-update logged-in auth user if editing self
+      await setItem(STORE_KEYS.USERS, newUsers);
+      setUsers(newUsers);
+      if (editingUser && user && editingUser.id === user.id) {
+        const updatedSelf = newUsers.find(u => u.id === user.id);
+        if (updatedSelf) login(updatedSelf);
+      }
+      setIsUserModalOpen(false);
+      setEditingUser(null);
+    } catch (error) {
+      console.error('[v0] Error saving user:', error);
     }
-    
-    // Auto-update logged-in auth user if editing self
-    setItem(STORE_KEYS.USERS, newUsers);
-    setUsers(newUsers);
-    if (editingUser && user && editingUser.id === user.id) {
-      const updatedSelf = newUsers.find(u => u.id === user.id);
-      if (updatedSelf) login(updatedSelf);
-    }
-    setIsUserModalOpen(false);
-    setEditingUser(null);
   };
 
-  if (!user || user.role !== 'owner') {
-    return <div className="p-8 text-center bg-white rounded-xl">Only the shop owner can access settings.</div>;
+  if (!user || user.role !== 'owner' || isLoading) {
+    return <div className="p-8 text-center bg-white rounded-xl">{isLoading ? 'Loading...' : 'Only the shop owner can access settings.'}</div>;
   }
 
   if (!settings) return null;
